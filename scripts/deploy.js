@@ -1,12 +1,12 @@
 const hre = require("hardhat");
 
 async function main() {
-  const WillBook = await hre.ethers.getContractFactory("WillBook");
-  const willBook = await WillBook.deploy();
-  await willBook.waitForDeployment();
+  const WishBook = await hre.ethers.getContractFactory("WishBook");
+  const wishBook = await WishBook.deploy();
+  await wishBook.waitForDeployment();
 
-  const address = await willBook.getAddress();
-  console.log("WillBook deployed to:", address);
+  const address = await wishBook.getAddress();
+  console.log("WishBook deployed to:", address);
 }
 
 main().catch((error) => {
