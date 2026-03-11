@@ -1,0 +1,152 @@
+:root {
+  color-scheme: light;
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji",
+    "Segoe UI Emoji";
+  background: #0b0f19;
+  color: #e6eaf2;
+}
+
+body {
+  margin: 0;
+}
+
+.container {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 32px 16px;
+}
+
+.header {
+  margin-bottom: 16px;
+}
+
+.title {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+
+.subtitle {
+  margin-top: 6px;
+  color: #aab3c7;
+}
+
+.panel {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: 16px;
+  margin-top: 14px;
+}
+
+.row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.actions {
+  margin-top: 12px;
+}
+
+.label {
+  font-weight: 600;
+}
+
+.hint {
+  color: #aab3c7;
+  font-size: 12px;
+}
+
+.meta {
+  display: grid;
+  gap: 4px;
+  color: #aab3c7;
+  font-size: 12px;
+}
+
+.input {
+  flex: 1;
+  min-width: 280px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.2);
+  color: #e6eaf2;
+  outline: none;
+}
+
+.textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.2);
+  color: #e6eaf2;
+  outline: none;
+  resize: vertical;
+}
+
+.btn {
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  color: #e6eaf2;
+  cursor: pointer;
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.primary {
+  border-color: rgba(124, 92, 255, 0.7);
+  background: rgba(124, 92, 255, 0.25);
+}
+
+.error {
+  margin-top: 12px;
+  color: #ffb4b4;
+  font-size: 13px;
+}
+
+.list {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.card {
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.22);
+}
+
+.cardMeta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: #aab3c7;
+  font-size: 12px;
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+.cardBody {
+  margin-top: 8px;
+  white-space: pre-wrap;
+  line-height: 1.5;
+}
+
+.empty {
+  color: #aab3c7;
+  font-size: 13px;
+  padding: 8px 2px;
+}
