@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BrowserProvider, Contract, formatEther, parseEther, type Eip1193Provider } from "ethers";
+import { ApiPromise, WsProvider } from "@polkadot/api";
 import { getContractAddress, WISHBOOK_ABI } from "./contract";
 
 declare global {
@@ -47,6 +48,20 @@ export default function App() {
   const [chainId, setChainId] = useState<string | null>(null);
   const [balance, setBalance] = useState<string | null>(null);
 
+  const apiRef = useRef<ApiPromise | null>(null);
+  const apiUnsubRef = useRef<null | (() => void)>(null);
+  const [polkadotRpc, setPolkadotRpc] = useState("wss://rpc.polkadot.io");
+  const [polkadotConnecting, setPolkadotConnecting] = useState(false);
+  const [polkadotConnected, setPolkadotConnected] = useState(false);
+  const [polkadotError, setPolkadotError] = useState<string | null>(null);
+  const [polkadotInfo, setPolkadotInfo] = useState<{
+    chain: string;
+    node: string;
+    version: string;
+    specName: string;
+  } | null>(null);
+  const [polkadotFinalized, setPolkadotFinalized] = useState<number | null>(null);
+
   const [message, setMessage] = useState("");
   const [posting, setPosting] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -83,6 +98,63 @@ export default function App() {
     setChainId(network.chainId.toString());
     setBalance(formatEther(bal));
   }, []);
+
+  const disconnectPolkadot = useCallback(async () => {
+    setPolkadotError(null);
+    try {
+      if (apiUnsubRef.current) {
+        apiUnsubRef.current();
+        apiUnsubRef.current = null;
+      }
+      if (apiRef.current) {
+        await apiRef.current.disconnect();
+        apiRef.current = null;
+      }
+    } catch (e: unknown) {
+      setPolkadotError(toErrorText(e));
+    } finally {
+      setPolkadotConnected(false);
+      setPolkadotInfo(null);
+      setPolkadotFinalized(null);
+    }
+  }, []);
+
+  const connectPolkadot = useCallback(async () => {
+    setPolkadotError(null);
+    setPolkadotConnecting(true);
+    try {
+      await disconnectPolkadot();
+      const wsProvider = new WsProvider(polkadotRpc);
+      const api = await ApiPromise.create({ provider: wsProvider });
+      apiRef.current = api;
+
+      const [chain, node, version] = await Promise.all([
+        api.rpc.system.chain(),
+        api.rpc.system.name(),
+        api.rpc.system.version()
+      ]);
+
+      setPolkadotInfo({
+        chain: chain.toString(),
+        node: node.toString(),
+        version: version.toString(),
+        specName: api.runtimeVersion.specName.toString()
+      });
+      setPolkadotConnected(true);
+
+      const unsub = await api.rpc.chain.subscribeFinalizedHeads((header) => {
+        setPolkadotFinalized(header.number.toNumber());
+      });
+      apiUnsubRef.current = unsub;
+    } catch (e: unknown) {
+      setPolkadotError(toErrorText(e));
+      setPolkadotConnected(false);
+      setPolkadotInfo(null);
+      setPolkadotFinalized(null);
+    } finally {
+      setPolkadotConnecting(false);
+    }
+  }, [disconnectPolkadot, polkadotRpc]);
 
   const loadWishes = useCallback(
     async (opts?: { offset?: number; limit?: number }) => {
@@ -211,6 +283,12 @@ export default function App() {
     void loadClaimable();
   }, [provider, account, loadClaimable]);
 
+  useEffect(() => {
+    return () => {
+      void disconnectPolkadot();
+    };
+  }, [disconnectPolkadot]);
+
   return (
     <div className="container">
       <header className="header">
@@ -271,6 +349,44 @@ export default function App() {
         </div>
 
         {errorText ? <div className="error">{errorText}</div> : null}
+      </section>
+
+      <section className="panel">
+        <div className="row">
+          <div className="label">Polkadot.js</div>
+          <div className="hint">连接 Substrate WSS 查询链信息</div>
+        </div>
+
+        <div className="row">
+          <label className="label">WSS</label>
+          <input
+            className="input"
+            value={polkadotRpc}
+            placeholder="wss://rpc.polkadot.io"
+            onChange={(e) => setPolkadotRpc(e.target.value)}
+          />
+          {polkadotConnected ? (
+            <button className="btn" onClick={() => void disconnectPolkadot()} disabled={polkadotConnecting}>
+              断开
+            </button>
+          ) : (
+            <button className="btn" onClick={() => void connectPolkadot()} disabled={polkadotConnecting}>
+              {polkadotConnecting ? "连接中..." : "连接"}
+            </button>
+          )}
+        </div>
+
+        {polkadotInfo ? (
+          <div className="meta" style={{ marginTop: 8 }}>
+            <div>Chain：{polkadotInfo.chain}</div>
+            <div>Node：{polkadotInfo.node}</div>
+            <div>Version：{polkadotInfo.version}</div>
+            <div>Spec：{polkadotInfo.specName}</div>
+            <div>Finalized：{polkadotFinalized ?? "-"}</div>
+          </div>
+        ) : null}
+
+        {polkadotError ? <div className="error">{polkadotError}</div> : null}
       </section>
 
       <section className="panel">
