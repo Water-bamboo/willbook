@@ -13,6 +13,7 @@
     "contract:deploy": "HARDHAT_TELEMETRY_PROMPT_SHOWN=true HARDHAT_DISABLE_TELEMETRY=true hardhat run scripts/deploy.js --network revive"
   },
   "dependencies": {
+    "@polkadot/api": "^16.5.4",
     "ethers": "^6.13.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
