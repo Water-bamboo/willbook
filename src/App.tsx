@@ -290,10 +290,6 @@ export default function App() {
       setErrorText("请先填写合约地址。");
       return;
     }
-    if (!wishAuthorName.trim()) {
-      setErrorText("署名不能为空。");
-      return;
-    }
     if (!wishContent.trim()) {
       setErrorText("内容不能为空。");
       return;
@@ -576,7 +572,7 @@ export default function App() {
                   <span className="mono">{new Date(Number(w.createdAt) * 1000).toLocaleString()}</span>
                 </div>
                 <div className="cardBody">
-                  <div>{payload.content}  --${payload.authorName ? `(${payload.authorName})` : "匿名"}</div>
+                  <div>{payload.content}  --{payload.authorName ? `${payload.authorName}` : "匿名"}</div>
                 </div>
               </div>
             );

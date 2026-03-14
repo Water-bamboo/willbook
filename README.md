@@ -1,6 +1,5 @@
 # 心愿簿 WishBook（Revive / Polkadot 2.0）
 
-一个最小可用 Demo：
 - 写心愿上链
 - 给心愿作者捐款
 - 作者提现捐款
@@ -105,7 +104,9 @@ https://docs.polkadot.com/smart-contracts/connect/
 
 来源同上：https://docs.polkadot.com/smart-contracts/connect/
 
-## 前端使用说明（演示流程）
+## 前端使用说明
+
+![前端截图](./intro.png)
 
 1. 打开前端，点击「连接钱包」
 2. 粘贴合约地址到「合约地址」
@@ -113,7 +114,7 @@ https://docs.polkadot.com/smart-contracts/connect/
 4. 在列表里给某条心愿填捐款金额 → 点击「捐款」
 5. 切换到作者地址 → 点击「提现」
 
-## 香港现场测试 Checklist
+## 现场测试 Checklist
 
 建议按这个顺序走，避免现场翻车：
 
@@ -128,4 +129,3 @@ https://docs.polkadot.com/smart-contracts/connect/
    - “写心愿上链”
    - “其他人可以捐款支持”
    - “作者可随时提现”
-
