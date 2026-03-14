@@ -1,6 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { BrowserProvider, Contract, formatEther, parseEther, type Eip1193Provider } from "ethers";
-import { ApiPromise, WsProvider } from "@polkadot/api";
 import { getContractAddress, WISHBOOK_ABI } from "./contract";
 
 declare global {
@@ -9,6 +8,11 @@ declare global {
   }
 }
 
+type EthereumProvider = Eip1193Provider & {
+  on?: (event: string, listener: (...args: unknown[]) => void) => void;
+  removeListener?: (event: string, listener: (...args: unknown[]) => void) => void;
+};
+
 type WishEntry = {
   id: bigint;
   author: string;
@@ -16,15 +20,86 @@ type WishEntry = {
   message: string;
 };
 
-function getStoredContractAddress(): string | null {
-  const key = "wishbook_address";
-  const value = localStorage.getItem(key);
-  return value?.trim() ? value.trim() : null;
+type WishPayload = {
+  authorName: string;
+  content: string;
+};
+
+type EvmChain = {
+  label: string;
+  chainIdHex: `0x${string}`;
+  chainIdDec: string;
+  nativeSymbol: string;
+  rpcUrls: string[];
+  blockExplorerUrls: string[];
+};
+
+const EVM_CHAINS: EvmChain[] = [
+  {
+    label: "Polkadot Hub TestNet",
+    chainIdHex: "0x190f1b41",
+    chainIdDec: "420420417",
+    nativeSymbol: "PAS",
+    rpcUrls: ["https://services.polkadothub-rpc.com/testnet/"],
+    blockExplorerUrls: ["https://blockscout-testnet.polkadot.io/"]
+  },
+  {
+    label: "Polkadot Hub",
+    chainIdHex: "0x190f1b43",
+    chainIdDec: "420420419",
+    nativeSymbol: "DOT",
+    rpcUrls: ["https://services.polkadothub-rpc.com/mainnet/"],
+    blockExplorerUrls: ["https://blockscout.polkadot.io/"]
+  },
+  {
+    label: "Kusama Hub",
+    chainIdHex: "0x190f1b42",
+    chainIdDec: "420420418",
+    nativeSymbol: "KSM",
+    rpcUrls: ["https://eth-rpc-kusama.polkadot.io/"],
+    blockExplorerUrls: ["https://blockscout-kusama.polkadot.io/"]
+  }
+];
+
+function getStoredContractAddress(chainIdHex: string | null): string | null {
+  if (chainIdHex) {
+    const scopedKey = `wishbook_address:${chainIdHex}`;
+    const scopedValue = localStorage.getItem(scopedKey);
+    if (scopedValue?.trim()) return scopedValue.trim();
+  }
+  const legacyKey = "wishbook_address";
+  const legacyValue = localStorage.getItem(legacyKey);
+  return legacyValue?.trim() ? legacyValue.trim() : null;
 }
 
-function setStoredContractAddress(address: string) {
-  const key = "wishbook_address";
-  localStorage.setItem(key, address.trim());
+function setStoredContractAddress(address: string, chainIdHex: string | null) {
+  if (chainIdHex) {
+    const scopedKey = `wishbook_address:${chainIdHex}`;
+    localStorage.setItem(scopedKey, address.trim());
+  }
+  const legacyKey = "wishbook_address";
+  localStorage.setItem(legacyKey, address.trim());
+}
+
+function encodeWishPayload(payload: WishPayload): string {
+  return JSON.stringify(payload);
+}
+
+function decodeWishPayload(raw: string): WishPayload {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== "object" || !parsed) return { authorName: "", content: raw };
+    const record = parsed as Record<string, unknown>;
+    const authorName = typeof record["authorName"] === "string" ? record["authorName"] : "";
+    const content = typeof record["content"] === "string" ? record["content"] : raw;
+    return { authorName, content };
+  } catch {
+    return { authorName: "", content: raw };
+  }
+}
+
+function utf8ByteLength(text: string): number {
+  return new TextEncoder().encode(text).length;
 }
 
 function toErrorText(e: unknown): string {
@@ -39,122 +114,131 @@ function toErrorText(e: unknown): string {
   return String(e);
 }
 
+const WISHES_PAGE_SIZE = 50;
+
 export default function App() {
+  const [selectedEvmChainHex, setSelectedEvmChainHex] = useState<string>(() => {
+    const saved = localStorage.getItem("wishbook_evm_chain");
+    return saved?.trim() ? saved.trim() : EVM_CHAINS[0].chainIdHex;
+  });
   const [contractAddress, setContractAddress] = useState<string | null>(
-    () => getContractAddress() ?? getStoredContractAddress()
+    () => getStoredContractAddress(selectedEvmChainHex) ?? getContractAddress()
   );
   const [provider, setProvider] = useState<BrowserProvider | null>(null);
   const [account, setAccount] = useState<string | null>(null);
   const [chainId, setChainId] = useState<string | null>(null);
   const [balance, setBalance] = useState<string | null>(null);
 
-  const apiRef = useRef<ApiPromise | null>(null);
-  const apiUnsubRef = useRef<null | (() => void)>(null);
-  const [polkadotRpc, setPolkadotRpc] = useState("wss://rpc.polkadot.io");
-  const [polkadotConnecting, setPolkadotConnecting] = useState(false);
-  const [polkadotConnected, setPolkadotConnected] = useState(false);
-  const [polkadotError, setPolkadotError] = useState<string | null>(null);
-  const [polkadotInfo, setPolkadotInfo] = useState<{
-    chain: string;
-    node: string;
-    version: string;
-    specName: string;
-  } | null>(null);
-  const [polkadotFinalized, setPolkadotFinalized] = useState<number | null>(null);
-
-  const [message, setMessage] = useState("");
+  const [wishAuthorName, setWishAuthorName] = useState("");
+  const [wishContent, setWishContent] = useState("");
   const [posting, setPosting] = useState(false);
   const [loading, setLoading] = useState(false);
   const [donatingId, setDonatingId] = useState<bigint | null>(null);
-  const [withdrawing, setWithdrawing] = useState(false);
   const [errorText, setErrorText] = useState<string | null>(null);
-  const [donationEth, setDonationEth] = useState("0.01");
-  const [claimableEth, setClaimableEth] = useState<string | null>(null);
 
   const [wishes, setWishes] = useState<WishEntry[]>([]);
+  const [loadingMoreWishes, setLoadingMoreWishes] = useState(false);
+  const [wishesHasMore, setWishesHasMore] = useState(false);
 
   const contractRead = useMemo(() => {
     if (!provider || !contractAddress) return null;
     return new Contract(contractAddress, WISHBOOK_ABI, provider);
   }, [provider, contractAddress]);
 
+  const selectedEvmChain = useMemo(() => {
+    return EVM_CHAINS.find((c) => c.chainIdHex === selectedEvmChainHex) ?? EVM_CHAINS[0];
+  }, [selectedEvmChainHex]);
+
+  const connectedEvmChain = useMemo(() => {
+    if (!chainId) return null;
+    return EVM_CHAINS.find((c) => c.chainIdDec === chainId) ?? null;
+  }, [chainId]);
+
+  const displayEvmChain = connectedEvmChain ?? selectedEvmChain;
+  const isChainMismatch =
+    Boolean(chainId) && (!connectedEvmChain || connectedEvmChain.chainIdHex !== selectedEvmChain.chainIdHex);
+
+  const syncWalletState = useCallback(
+    async (nextProvider: BrowserProvider, address: string) => {
+      const network = await nextProvider.getNetwork();
+      const bal = await nextProvider.getBalance(address);
+
+      setProvider(nextProvider);
+      setAccount(address);
+      setChainId(network.chainId.toString());
+      setBalance(formatEther(bal));
+
+      const matched = EVM_CHAINS.find((c) => c.chainIdDec === network.chainId.toString());
+      if (matched) {
+        setSelectedEvmChainHex(matched.chainIdHex);
+        localStorage.setItem("wishbook_evm_chain", matched.chainIdHex);
+      }
+    },
+    []
+  );
+
+  const ensureEvmChain = useCallback(
+    async (target: EvmChain) => {
+      const eth = window.ethereum as EthereumProvider | undefined;
+      if (!eth) {
+        setErrorText("没检测到钱包扩展（MetaMask 等）。");
+        return;
+      }
+      setErrorText(null);
+      try {
+        await eth.request({
+          method: "wallet_switchEthereumChain",
+          params: [{ chainId: target.chainIdHex }]
+        });
+      } catch (e: unknown) {
+        const record = e as Record<string, unknown>;
+        const code = record["code"];
+        const message = typeof record["message"] === "string" ? record["message"] : "";
+        const missingChain = code === 4902 || message.includes("Unrecognized chain ID") || message.includes("not added");
+        if (!missingChain) throw e;
+
+        await eth.request({
+          method: "wallet_addEthereumChain",
+          params: [
+            {
+              chainId: target.chainIdHex,
+              chainName: target.label,
+              nativeCurrency: { name: target.nativeSymbol, symbol: target.nativeSymbol, decimals: 18 },
+              rpcUrls: target.rpcUrls,
+              blockExplorerUrls: target.blockExplorerUrls
+            }
+          ]
+        });
+      }
+    },
+    []
+  );
+
   const connectWallet = useCallback(async () => {
     setErrorText(null);
-    if (!window.ethereum) {
+    const eth = window.ethereum as EthereumProvider | undefined;
+    if (!eth) {
       setErrorText("没检测到钱包扩展（MetaMask 等）。");
       return;
     }
 
-    const nextProvider = new BrowserProvider(window.ethereum);
-    await nextProvider.send("eth_requestAccounts", []);
-
-    const signer = await nextProvider.getSigner();
-    const address = await signer.getAddress();
-    const network = await nextProvider.getNetwork();
-    const bal = await nextProvider.getBalance(address);
-
-    setProvider(nextProvider);
-    setAccount(address);
-    setChainId(network.chainId.toString());
-    setBalance(formatEther(bal));
-  }, []);
-
-  const disconnectPolkadot = useCallback(async () => {
-    setPolkadotError(null);
     try {
-      if (apiUnsubRef.current) {
-        apiUnsubRef.current();
-        apiUnsubRef.current = null;
-      }
-      if (apiRef.current) {
-        await apiRef.current.disconnect();
-        apiRef.current = null;
-      }
-    } catch (e: unknown) {
-      setPolkadotError(toErrorText(e));
-    } finally {
-      setPolkadotConnected(false);
-      setPolkadotInfo(null);
-      setPolkadotFinalized(null);
+      await ensureEvmChain(selectedEvmChain);
+    } catch (err: unknown) {
+      setErrorText(toErrorText(err));
+      return;
     }
-  }, []);
 
-  const connectPolkadot = useCallback(async () => {
-    setPolkadotError(null);
-    setPolkadotConnecting(true);
-    try {
-      await disconnectPolkadot();
-      const wsProvider = new WsProvider(polkadotRpc);
-      const api = await ApiPromise.create({ provider: wsProvider });
-      apiRef.current = api;
-
-      const [chain, node, version] = await Promise.all([
-        api.rpc.system.chain(),
-        api.rpc.system.name(),
-        api.rpc.system.version()
-      ]);
-
-      setPolkadotInfo({
-        chain: chain.toString(),
-        node: node.toString(),
-        version: version.toString(),
-        specName: api.runtimeVersion.specName.toString()
-      });
-      setPolkadotConnected(true);
-
-      const unsub = await api.rpc.chain.subscribeFinalizedHeads((header) => {
-        setPolkadotFinalized(header.number.toNumber());
-      });
-      apiUnsubRef.current = unsub;
-    } catch (e: unknown) {
-      setPolkadotError(toErrorText(e));
-      setPolkadotConnected(false);
-      setPolkadotInfo(null);
-      setPolkadotFinalized(null);
-    } finally {
-      setPolkadotConnecting(false);
+    const nextProvider = new BrowserProvider(eth);
+    const accounts: string[] = await nextProvider.send("eth_requestAccounts", []);
+    const address = accounts[0];
+    if (!address) {
+      setErrorText("钱包未返回账号。");
+      return;
     }
-  }, [disconnectPolkadot, polkadotRpc]);
+
+    await syncWalletState(nextProvider, address);
+  }, [ensureEvmChain, selectedEvmChain, syncWalletState]);
 
   const loadWishes = useCallback(
     async (opts?: { offset?: number; limit?: number }) => {
@@ -163,9 +247,11 @@ export default function App() {
       setLoading(true);
       try {
         const offset = BigInt(opts?.offset ?? 0);
-        const limit = BigInt(opts?.limit ?? 50);
+        const limitNumber = opts?.limit ?? WISHES_PAGE_SIZE;
+        const limit = BigInt(limitNumber);
         const page: WishEntry[] = await contractRead.getWishes(offset, limit);
         setWishes(page);
+        setWishesHasMore(page.length === limitNumber);
       } catch (e: unknown) {
         setErrorText(toErrorText(e));
       } finally {
@@ -175,15 +261,25 @@ export default function App() {
     [contractRead]
   );
 
-  const loadClaimable = useCallback(async () => {
-    if (!contractRead || !account) return;
+  const loadMoreWishes = useCallback(async () => {
+    if (!contractRead) return;
+    if (loadingMoreWishes) return;
+    if (!wishesHasMore && wishes.length > 0) return;
+
+    setErrorText(null);
+    setLoadingMoreWishes(true);
     try {
-      const raw: bigint = await contractRead.claimable(account);
-      setClaimableEth(formatEther(raw));
-    } catch {
-      setClaimableEth(null);
+      const offset = BigInt(wishes.length);
+      const limit = BigInt(WISHES_PAGE_SIZE);
+      const page: WishEntry[] = await contractRead.getWishes(offset, limit);
+      setWishes((prev) => [...prev, ...page]);
+      setWishesHasMore(page.length === WISHES_PAGE_SIZE);
+    } catch (e: unknown) {
+      setErrorText(toErrorText(e));
+    } finally {
+      setLoadingMoreWishes(false);
     }
-  }, [contractRead, account]);
+  }, [contractRead, loadingMoreWishes, wishes.length, wishesHasMore]);
 
   const postWish = useCallback(async () => {
     if (!provider || !account) {
@@ -194,29 +290,39 @@ export default function App() {
       setErrorText("请先填写合约地址。");
       return;
     }
-    if (!message.trim()) {
-      setErrorText("心愿不能为空。");
+    if (!wishAuthorName.trim()) {
+      setErrorText("署名不能为空。");
+      return;
+    }
+    if (!wishContent.trim()) {
+      setErrorText("内容不能为空。");
       return;
     }
 
     setErrorText(null);
     setPosting(true);
     try {
+      const payload = encodeWishPayload({ authorName: wishAuthorName.trim(), content: wishContent.trim() });
+      if (utf8ByteLength(payload) > 2000) {
+        setErrorText("内容过长（上链内容需 <= 2000 字节）。");
+        return;
+      }
       const signer = await provider.getSigner();
       const contractWrite = new Contract(contractAddress, WISHBOOK_ABI, signer);
-      const tx = await contractWrite.writeWish(message.trim());
+      const tx = await contractWrite.writeWish(payload);
       await tx.wait();
-      setMessage("");
-      await loadWishes({ offset: 0, limit: 50 });
+      setWishAuthorName("");
+      setWishContent("");
+      await loadWishes({ offset: 0, limit: WISHES_PAGE_SIZE });
     } catch (e: unknown) {
       setErrorText(toErrorText(e));
     } finally {
       setPosting(false);
     }
-  }, [provider, account, contractAddress, message, loadWishes]);
+  }, [provider, account, contractAddress, wishAuthorName, wishContent, loadWishes]);
 
   const donateToWish = useCallback(
-    async (id: bigint) => {
+    async (id: bigint, donationAmount: string) => {
       if (!provider || !account) {
         setErrorText("请先连接钱包。");
         return;
@@ -229,7 +335,7 @@ export default function App() {
       setErrorText(null);
       setDonatingId(id);
       try {
-        const amount = parseEther(donationEth || "0");
+        const amount = parseEther(donationAmount || "0");
         if (amount <= 0n) {
           setErrorText("捐款金额必须大于 0。");
           return;
@@ -238,62 +344,62 @@ export default function App() {
         const contractWrite = new Contract(contractAddress, WISHBOOK_ABI, signer);
         const tx = await contractWrite.donate(id, { value: amount });
         await tx.wait();
-        await loadClaimable();
       } catch (e: unknown) {
         setErrorText(toErrorText(e));
       } finally {
         setDonatingId(null);
       }
     },
-    [provider, account, contractAddress, donationEth, loadClaimable]
+    [provider, account, contractAddress]
   );
-
-  const withdraw = useCallback(async () => {
-    if (!provider || !account) {
-      setErrorText("请先连接钱包。");
-      return;
-    }
-    if (!contractAddress) {
-      setErrorText("请先填写合约地址。");
-      return;
-    }
-
-    setErrorText(null);
-    setWithdrawing(true);
-    try {
-      const signer = await provider.getSigner();
-      const contractWrite = new Contract(contractAddress, WISHBOOK_ABI, signer);
-      const tx = await contractWrite.withdraw();
-      await tx.wait();
-      await loadClaimable();
-    } catch (e: unknown) {
-      setErrorText(toErrorText(e));
-    } finally {
-      setWithdrawing(false);
-    }
-  }, [provider, account, contractAddress, loadClaimable]);
 
   useEffect(() => {
     if (!provider) return;
-    void loadWishes({ offset: 0, limit: 50 });
+    void loadWishes({ offset: 0, limit: WISHES_PAGE_SIZE });
   }, [provider, loadWishes]);
 
   useEffect(() => {
-    if (!provider || !account) return;
-    void loadClaimable();
-  }, [provider, account, loadClaimable]);
+    const address = getStoredContractAddress(selectedEvmChainHex);
+    const envAddress = getContractAddress();
+    setContractAddress(address ?? envAddress);
+  }, [selectedEvmChainHex]);
 
   useEffect(() => {
-    return () => {
-      void disconnectPolkadot();
+    const eth = window.ethereum as EthereumProvider | undefined;
+    if (!eth) return;
+
+    const onAccountsChanged = (accounts: unknown) => {
+      const list = Array.isArray(accounts) ? (accounts as string[]) : [];
+      const next = list[0]?.trim();
+      if (!next) {
+        setProvider(null);
+        setAccount(null);
+        setChainId(null);
+        setBalance(null);
+        return;
+      }
+      const nextProvider = new BrowserProvider(eth);
+      void syncWalletState(nextProvider, next);
     };
-  }, [disconnectPolkadot]);
+
+    const onChainChanged = () => {
+      if (!account) return;
+      const nextProvider = new BrowserProvider(eth);
+      void syncWalletState(nextProvider, account);
+    };
+
+    eth.on?.("accountsChanged", onAccountsChanged);
+    eth.on?.("chainChanged", onChainChanged);
+    return () => {
+      eth.removeListener?.("accountsChanged", onAccountsChanged);
+      eth.removeListener?.("chainChanged", onChainChanged);
+    };
+  }, [account, syncWalletState]);
 
   return (
     <div className="container">
       <header className="header">
         <div className="title">心愿簿 WishBook</div>
-        <div className="subtitle">把愿望写进链上，也可以收到捐助</div>
       </header>
 
       <section className="panel">
@@ -303,11 +409,47 @@ export default function App() {
           </button>
           <div className="meta">
             <div>账号：{account ?? "-"}</div>
+            <div>网络：{connectedEvmChain ? connectedEvmChain.label : chainId ? `未知网络（${chainId}）` : "-"}</div>
+            <div>已选：{selectedEvmChain.label}</div>
             <div>ChainId：{chainId ?? "-"}</div>
-            <div>余额：{balance ? `${balance} ETH` : "-"}</div>
-            <div>可提现：{claimableEth ? `${claimableEth} ETH` : "-"}</div>
+            <div>余额：{balance ? `${balance} ${displayEvmChain.nativeSymbol}` : "-"}</div>
           </div>
         </div>
+
+        <div className="row">
+          <label className="label">EVM 网络</label>
+          <select
+            className="input"
+            value={selectedEvmChainHex}
+            onChange={async (e) => {
+              const nextHex = e.target.value;
+              const next = EVM_CHAINS.find((c) => c.chainIdHex === nextHex);
+              if (!next) return;
+              setSelectedEvmChainHex(next.chainIdHex);
+              localStorage.setItem("wishbook_evm_chain", next.chainIdHex);
+              try {
+                await ensureEvmChain(next);
+                if (account) {
+                  const eth = window.ethereum as EthereumProvider | undefined;
+                  if (eth) {
+                    const nextProvider = new BrowserProvider(eth);
+                    await syncWalletState(nextProvider, account);
+                  }
+                }
+              } catch (err: unknown) {
+                setErrorText(toErrorText(err));
+              }
+            }}
+          >
+            {EVM_CHAINS.map((c) => (
+              <option key={c.chainIdHex} value={c.chainIdHex}>
+                {c.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {isChainMismatch ? <div className="error">钱包当前网络与已选网络不一致，请用下拉框切换。</div> : null}
 
         <div className="row">
           <label className="label">合约地址</label>
@@ -319,11 +461,27 @@ export default function App() {
               const value = e.target.value.trim();
               const next = value ? value : null;
               setContractAddress(next);
-              if (next) setStoredContractAddress(next);
+              if (next) setStoredContractAddress(next, selectedEvmChainHex);
             }}
           />
-          <button className="btn" onClick={withdraw} disabled={withdrawing}>
-            {withdrawing ? "提现中..." : "提现"}
+          <button
+            className="btn"
+            onClick={() => {
+              const idInput = window.prompt("心愿 ID", wishes[0]?.id.toString() ?? "");
+              if (!idInput) return;
+              const amount = window.prompt("捐款金额", "0.01");
+              if (!amount) return;
+              try {
+                const wishId = BigInt(idInput.trim());
+                void donateToWish(wishId, amount.trim());
+              } catch {
+                setErrorText("心愿 ID 格式不正确。");
+              }
+            }}
+            disabled={donatingId !== null}
+            title="向指定心愿捐款"
+          >
+            {donatingId !== null ? "捐款中..." : "捐款"}
           </button>
         </div>
       </section>
@@ -332,26 +490,31 @@ export default function App() {
         <div className="row">
           <label className="label">写心愿</label>
         </div>
+        <div className="row">
+          <input
+            className="input"
+            value={wishAuthorName}
+            placeholder="署名"
+            onChange={(e) => setWishAuthorName(e.target.value)}
+          />
+        </div>
         <textarea
           className="textarea"
-          value={message}
+          value={wishContent}
           placeholder="写下你的一个心愿……"
-          onChange={(e) => setMessage(e.target.value)}
+          onChange={(e) => setWishContent(e.target.value)}
           rows={5}
         />
         <div className="row actions">
           <button className="btn primary" onClick={postWish} disabled={posting}>
             {posting ? "提交中..." : "上链保存"}
           </button>
-          <button className="btn" onClick={() => loadWishes({ offset: 0, limit: 50 })} disabled={loading}>
-            {loading ? "刷新中..." : "刷新列表"}
-          </button>
         </div>
 
         {errorText ? <div className="error">{errorText}</div> : null}
       </section>
 
-      <section className="panel">
+      {/* <section className="panel">
         <div className="row">
           <div className="label">Polkadot.js</div>
           <div className="hint">连接 Substrate WSS 查询链信息</div>
@@ -387,41 +550,37 @@ export default function App() {
         ) : null}
 
         {polkadotError ? <div className="error">{polkadotError}</div> : null}
-      </section>
+      </section> */}
 
       <section className="panel">
         <div className="row">
           <div className="label">最新心愿</div>
-          <div className="hint">倒序显示，最多 50 条</div>
+          <button
+            className="btn"
+            style={{ marginLeft: "auto" }}
+            onClick={loadMoreWishes}
+            disabled={!contractRead || loading || loadingMoreWishes || (wishes.length > 0 && !wishesHasMore)}
+          >
+            {loadingMoreWishes ? "加载中..." : "更多"}
+          </button>
         </div>
 
         <div className="list">
           {wishes.length === 0 ? <div className="empty">暂无内容</div> : null}
-          {wishes.map((w) => (
-            <div className="card" key={w.id.toString()}>
-              <div className="cardMeta">
-                <span className="mono">{w.author}</span>
-                <span className="mono">{new Date(Number(w.createdAt) * 1000).toLocaleString()}</span>
+          {wishes.map((w) => {
+            const payload = decodeWishPayload(w.message);
+            return (
+              <div className="card" key={w.id.toString()}>
+                <div className="cardMeta">
+                  <span className="mono">{w.author}</span>
+                  <span className="mono">{new Date(Number(w.createdAt) * 1000).toLocaleString()}</span>
+                </div>
+                <div className="cardBody">
+                  <div>{payload.content}  --${payload.authorName ? `(${payload.authorName})` : "匿名"}</div>
+                </div>
               </div>
-              <div className="cardBody">{w.message}</div>
-              <div className="row actions">
-                <input
-                  className="input"
-                  value={donationEth}
-                  onChange={(e) => setDonationEth(e.target.value)}
-                  placeholder="0.01"
-                />
-                <button
-                  className="btn"
-                  onClick={() => donateToWish(w.id)}
-                  disabled={donatingId === w.id}
-                  title="捐款会记入作者可提现余额"
-                >
-                  {donatingId === w.id ? "捐款中..." : "捐款"}
-                </button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </section>
     </div>
