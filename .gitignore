@@ -3,7 +3,11 @@ node_modules
 .env.*
 
 dist
-
+/frontend/node_modules
+/frontend/dist
+/contract/node_modules
+/contract/artifacts
+/contract/cache
 artifacts
 cache
 

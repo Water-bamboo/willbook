@@ -1,131 +1,138 @@
-# 心愿簿 WishBook（Revive / Polkadot 2.0）
+# WishBook (Revive / Polkadot 2.0)
 
-- 写心愿上链
-- 给心愿作者捐款
-- 作者提现捐款
-- 前端附带 polkadot.js（Substrate）连接面板，用于现场展示链信息与区块高度
+- Post a wish on-chain
+- Donate to a wish
+- Authors can withdraw donations (not exposed in the public UI)
+- Frontend includes a polkadot.js (Substrate) panel for live demos
 
-## 环境要求
+## Requirements
 
-- Node.js 18+（建议 20+）
--（可选）yarn
-- 浏览器钱包（MetaMask 等）
+- Node.js 18+ (20+ recommended)
+- (Optional) yarn
+- Browser wallet (MetaMask, etc.)
 
-## 安装依赖
+## Install dependencies
 
-优先尝试 yarn：
+Prefer yarn:
 
 ```bash
+cd frontend
 yarn
 ```
 
-如果你本机 yarn 有权限/配置问题（例如无法写入 `~/.yarnrc`），直接用 npm：
+If yarn has permission/config issues on your machine (e.g. cannot write `~/.yarnrc`), use npm:
 
 ```bash
+cd frontend
 npm install
 ```
 
-## 启动前端
+## Start frontend
 
 ```bash
+cd frontend
 npm run dev
 ```
 
-然后打开提示的本地地址（默认 http://localhost:5173/ ）。
+Then open the printed local URL (default: http://localhost:5173/).
 
-## 合约说明
+## Contract
 
-合约文件：`contracts/WillBook.sol`（合约名为 `WishBook`）
+Contract source: `contract/contract/WillBook.sol` (contract name: `WishBook`)
 
-核心接口：
-- `writeWish(string message)`：写心愿（非空，<=2000 字节）
-- `donate(uint256 id)`（payable）：向某条心愿捐款
-- `withdraw()`：作者提现自己的 `claimable`
-- `claimable(address)`：作者可提现金额
-- `getWishes(offset, limit)`：倒序分页读取心愿（包含 `id`）
+Core methods:
+- `writeWish(string message)`: create a wish (non-empty, <= 2000 bytes)
+- `donate(uint256 id)` (payable): donate to a wish
+- `withdraw()`: withdraw the caller's `claimable`
+- `claimable(address)`: withdrawable amount for an author
+- `getWishes(offset, limit)`: reverse-ordered paginated list (includes `id`)
 
-## 部署合约（Revive / Polkadot Hub EVM JSON-RPC）
+## Deploy contract (Revive / Polkadot Hub EVM JSON-RPC)
 
-### 1) 配置 .env
+### 1) Configure .env
 
-在项目根目录新建 `.env`（不要提交到仓库）：
+Create `contract/.env` (do not commit it):
 
 ```bash
+cd contract
 RPC_URL=https://services.polkadothub-rpc.com/testnet/
-PRIVATE_KEY=你的部署私钥（0x 开头）
+PRIVATE_KEY=your deploy private key (0x-prefixed)
 ```
 
-说明：
-- `RPC_URL` 是 EVM JSON-RPC（HTTP）地址，用于 Hardhat 部署
-- `PRIVATE_KEY` 用于部署的 EVM 私钥
+Notes:
+- `RPC_URL` is an EVM JSON-RPC (HTTP) endpoint used by Hardhat for deployment
+- `PRIVATE_KEY` is the EVM private key used for deployment
 
-### 2) 编译与测试（可选但建议）
+### 2) Compile & test (optional but recommended)
 
 ```bash
-npm run contract:compile
-npm run contract:test
+cd contract
+npm install
+npm run compile
+npm run test
 ```
 
-### 3) 部署
+### 3) Deploy
 
 ```bash
-npm run contract:deploy
+cd contract
+npm run deploy
 ```
 
-终端会输出：
+The terminal prints something like:
 
 ```
 WishBook deployed to: 0x...
 ```
 
-把这个合约地址复制到前端页面的「合约地址」输入框即可交互。
+Copy this contract address into the "Contract Address" field in the frontend.
 
-## 推荐 RPC 列表
+## Recommended RPC endpoints
 
-### EVM JSON-RPC（Hardhat 部署用，HTTP）
+### EVM JSON-RPC (HTTP, for Hardhat deployment)
 
-Polkadot Hub TestNet（推荐先用）：
+Polkadot Hub TestNet (recommended):
 - `https://eth-rpc-testnet.polkadot.io/`
 - `https://services.polkadothub-rpc.com/testnet/`
 
-Polkadot Hub（主网）：
+Polkadot Hub (mainnet):
 - `https://eth-rpc.polkadot.io/`
 - `https://services.polkadothub-rpc.com/mainnet/`
 
-来源：Polkadot Developer Docs（Network Details / RPC URL）
+Source: Polkadot Developer Docs (Network Details / RPC URL)
 https://docs.polkadot.com/smart-contracts/connect/
 
-### Substrate WSS（polkadot.js 面板用）
+### Substrate WSS (for the polkadot.js panel)
 
 - `wss://rpc.polkadot.io`
 - `wss://polkadot-asset-hub-rpc.polkadot.io`
 - `wss://kusama-asset-hub-rpc.polkadot.io`
 - `wss://asset-hub-paseo-rpc.n.dwellir.com`
 
-来源同上：https://docs.polkadot.com/smart-contracts/connect/
+Source: https://docs.polkadot.com/smart-contracts/connect/
 
-## 前端使用说明
+## Frontend usage
 
-![前端截图](./intro.png)
+![Screenshot](./doc/intro.png)
 
-1. 打开前端，点击「连接钱包」
-2. 粘贴合约地址到「合约地址」
-3. 在「写心愿」输入内容 → 点击「上链保存」
-4. 在列表里给某条心愿填捐款金额 → 点击「捐款」
-5. 切换到作者地址 → 点击「提现」
+1. Open the frontend and click "Connect Wallet"
+2. Paste the deployed contract address into "Contract Address"
+3. (Optional) enter a signature and your wish content, then click "Submit on-chain"
+4. Click "Donate", then enter the Wish ID and donation amount
+5. Click "More" to load more wishes
 
-## 现场测试 Checklist
+## Demo checklist
 
-建议按这个顺序走，避免现场翻车：
+Follow this order to reduce surprises during a live demo:
 
-1. 提前准备好：
-   - 已部署的合约地址
-   - 前端部署链接（或本地起 `npm run dev`）
-   - 钱包里有测试代币（用于写心愿、捐款、提现 gas）
-2. 现场网络不稳时：
-   - 用前端的 Polkadot.js 面板切换 WSS
-   - Hardhat 部署改用另一个 HTTP RPC
-3. 演示口径：
-   - “写心愿上链”
-   - “其他人可以捐款支持”
-   - “作者可随时提现”
+1. Prepare in advance:
+   - A deployed contract address
+   - A frontend URL (or run `npm run dev`)
+   - A wallet funded with test tokens (gas for posting / donating / withdrawing)
+2. If the network is unstable:
+   - Switch WSS endpoint in the Polkadot.js panel (if enabled)
+   - Use another HTTP RPC endpoint for Hardhat deployment
+3. Talking points:
+   - "Post a wish on-chain"
+   - "Anyone can donate to support it"
+   - "The author can withdraw at any time"

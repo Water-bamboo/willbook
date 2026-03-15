@@ -181,7 +181,7 @@ export default function App() {
     async (target: EvmChain) => {
       const eth = window.ethereum as EthereumProvider | undefined;
       if (!eth) {
-        setErrorText("没检测到钱包扩展（MetaMask 等）。");
+        setErrorText("No wallet extension detected (MetaMask, etc.).");
         return;
       }
       setErrorText(null);
@@ -218,7 +218,7 @@ export default function App() {
     setErrorText(null);
     const eth = window.ethereum as EthereumProvider | undefined;
     if (!eth) {
-      setErrorText("没检测到钱包扩展（MetaMask 等）。");
+      setErrorText("No wallet extension detected (MetaMask, etc.).");
       return;
     }
 
@@ -233,7 +233,7 @@ export default function App() {
     const accounts: string[] = await nextProvider.send("eth_requestAccounts", []);
     const address = accounts[0];
     if (!address) {
-      setErrorText("钱包未返回账号。");
+      setErrorText("No account returned from wallet.");
       return;
     }
 
@@ -283,15 +283,15 @@ export default function App() {
 
   const postWish = useCallback(async () => {
     if (!provider || !account) {
-      setErrorText("请先连接钱包。");
+      setErrorText("Please connect your wallet first.");
       return;
     }
     if (!contractAddress) {
-      setErrorText("请先填写合约地址。");
+      setErrorText("Please enter the contract address first.");
       return;
     }
     if (!wishContent.trim()) {
-      setErrorText("内容不能为空。");
+      setErrorText("Content cannot be empty.");
       return;
     }
 
@@ -300,7 +300,7 @@ export default function App() {
     try {
       const payload = encodeWishPayload({ authorName: wishAuthorName.trim(), content: wishContent.trim() });
       if (utf8ByteLength(payload) > 2000) {
-        setErrorText("内容过长（上链内容需 <= 2000 字节）。");
+        setErrorText("Content is too long (must be <= 2000 bytes).");
         return;
       }
       const signer = await provider.getSigner();
@@ -320,11 +320,11 @@ export default function App() {
   const donateToWish = useCallback(
     async (id: bigint, donationAmount: string) => {
       if (!provider || !account) {
-        setErrorText("请先连接钱包。");
+        setErrorText("Please connect your wallet first.");
         return;
       }
       if (!contractAddress) {
-        setErrorText("请先填写合约地址。");
+        setErrorText("Please enter the contract address first.");
         return;
       }
 
@@ -333,7 +333,7 @@ export default function App() {
       try {
         const amount = parseEther(donationAmount || "0");
         if (amount <= 0n) {
-          setErrorText("捐款金额必须大于 0。");
+          setErrorText("Donation amount must be greater than 0.");
           return;
         }
         const signer = await provider.getSigner();
@@ -395,25 +395,25 @@ export default function App() {
   return (
     <div className="container">
       <header className="header">
-        <div className="title">心愿簿 WishBook</div>
+        <div className="title">WishBook</div>
       </header>
 
       <section className="panel">
         <div className="row">
           <button className="btn" onClick={connectWallet}>
-            {account ? "已连接" : "连接钱包"}
+            {account ? "Connected" : "Connect Wallet"}
           </button>
           <div className="meta">
-            <div>账号：{account ?? "-"}</div>
-            <div>网络：{connectedEvmChain ? connectedEvmChain.label : chainId ? `未知网络（${chainId}）` : "-"}</div>
-            <div>已选：{selectedEvmChain.label}</div>
+            <div>Account: {account ?? "-"}</div>
+            <div>Network: {connectedEvmChain ? connectedEvmChain.label : chainId ? `Unknown network (${chainId})` : "-"}</div>
+            <div>Selected: {selectedEvmChain.label}</div>
             <div>ChainId：{chainId ?? "-"}</div>
-            <div>余额：{balance ? `${balance} ${displayEvmChain.nativeSymbol}` : "-"}</div>
+            <div>Balance: {balance ? `${balance} ${displayEvmChain.nativeSymbol}` : "-"}</div>
           </div>
         </div>
 
         <div className="row">
-          <label className="label">EVM 网络</label>
+          <label className="label">EVM Network</label>
           <select
             className="input"
             value={selectedEvmChainHex}
@@ -445,10 +445,12 @@ export default function App() {
           </select>
         </div>
 
-        {isChainMismatch ? <div className="error">钱包当前网络与已选网络不一致，请用下拉框切换。</div> : null}
+        {isChainMismatch ? (
+          <div className="error">Wallet network doesn't match selected network. Please switch using the dropdown.</div>
+        ) : null}
 
         <div className="row">
-          <label className="label">合约地址</label>
+          <label className="label">Contract Address</label>
           <input
             className="input"
             value={contractAddress ?? ""}
@@ -463,47 +465,47 @@ export default function App() {
           <button
             className="btn"
             onClick={() => {
-              const idInput = window.prompt("心愿 ID", wishes[0]?.id.toString() ?? "");
+              const idInput = window.prompt("Wish ID", wishes[0]?.id.toString() ?? "");
               if (!idInput) return;
-              const amount = window.prompt("捐款金额", "0.01");
+              const amount = window.prompt("Donation amount", "0.01");
               if (!amount) return;
               try {
                 const wishId = BigInt(idInput.trim());
                 void donateToWish(wishId, amount.trim());
               } catch {
-                setErrorText("心愿 ID 格式不正确。");
+                setErrorText("Invalid Wish ID format.");
               }
             }}
             disabled={donatingId !== null}
-            title="向指定心愿捐款"
+            title="Donate to a specific wish"
           >
-            {donatingId !== null ? "捐款中..." : "捐款"}
+            {donatingId !== null ? "Donating..." : "Donate"}
           </button>
         </div>
       </section>
 
       <section className="panel">
         <div className="row">
-          <label className="label">写心愿</label>
+          <label className="label">Write a Wish</label>
         </div>
         <div className="row">
           <input
             className="input"
             value={wishAuthorName}
-            placeholder="署名"
+            placeholder="Sign (optional)"
             onChange={(e) => setWishAuthorName(e.target.value)}
           />
         </div>
         <textarea
           className="textarea"
           value={wishContent}
-          placeholder="写下你的一个心愿……"
+          placeholder="Write your wish..."
           onChange={(e) => setWishContent(e.target.value)}
           rows={5}
         />
         <div className="row actions">
           <button className="btn primary" onClick={postWish} disabled={posting}>
-            {posting ? "提交中..." : "上链保存"}
+            {posting ? "Submitting..." : "Submit on-chain"}
           </button>
         </div>
 
@@ -513,7 +515,7 @@ export default function App() {
       {/* <section className="panel">
         <div className="row">
           <div className="label">Polkadot.js</div>
-          <div className="hint">连接 Substrate WSS 查询链信息</div>
+          <div className="hint">Connect to Substrate WSS to inspect chain info</div>
         </div>
 
         <div className="row">
@@ -526,11 +528,11 @@ export default function App() {
           />
           {polkadotConnected ? (
             <button className="btn" onClick={() => void disconnectPolkadot()} disabled={polkadotConnecting}>
-              断开
+              Disconnect
             </button>
           ) : (
             <button className="btn" onClick={() => void connectPolkadot()} disabled={polkadotConnecting}>
-              {polkadotConnecting ? "连接中..." : "连接"}
+              {polkadotConnecting ? "Connecting..." : "Connect"}
             </button>
           )}
         </div>
@@ -550,19 +552,19 @@ export default function App() {
 
       <section className="panel">
         <div className="row">
-          <div className="label">最新心愿</div>
+          <div className="label">Latest Wishes</div>
           <button
             className="btn"
             style={{ marginLeft: "auto" }}
             onClick={loadMoreWishes}
             disabled={!contractRead || loading || loadingMoreWishes || (wishes.length > 0 && !wishesHasMore)}
           >
-            {loadingMoreWishes ? "加载中..." : "更多"}
+            {loadingMoreWishes ? "Loading..." : "More"}
           </button>
         </div>
 
         <div className="list">
-          {wishes.length === 0 ? <div className="empty">暂无内容</div> : null}
+          {wishes.length === 0 ? <div className="empty">No content yet.</div> : null}
           {wishes.map((w) => {
             const payload = decodeWishPayload(w.message);
             return (
@@ -572,7 +574,9 @@ export default function App() {
                   <span className="mono">{new Date(Number(w.createdAt) * 1000).toLocaleString()}</span>
                 </div>
                 <div className="cardBody">
-                  <div>{payload.content}  --{payload.authorName ? `${payload.authorName}` : "匿名"}</div>
+                  <div>
+                    {payload.content} — {payload.authorName ? payload.authorName : "Anonymous"}
+                  </div>
                 </div>
               </div>
             );

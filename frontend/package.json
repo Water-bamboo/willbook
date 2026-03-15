@@ -7,10 +7,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "lint": "eslint .",
-    "typecheck": "tsc -b",
-    "contract:compile": "HARDHAT_TELEMETRY_PROMPT_SHOWN=true HARDHAT_DISABLE_TELEMETRY=true hardhat compile",
-    "contract:test": "HARDHAT_TELEMETRY_PROMPT_SHOWN=true HARDHAT_DISABLE_TELEMETRY=true hardhat test",
-    "contract:deploy": "HARDHAT_TELEMETRY_PROMPT_SHOWN=true HARDHAT_DISABLE_TELEMETRY=true hardhat run scripts/deploy.js --network revive"
+    "typecheck": "tsc -b"
   },
   "dependencies": {
     "@polkadot/api": "^16.5.4",
@@ -20,17 +17,14 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.19.0",
-    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
     "@types/node": "^22.13.5",
     "@vitejs/plugin-react": "^4.3.4",
-    "dotenv": "^16.4.7",
     "eslint": "^9.19.0",
     "eslint-plugin-react-hooks": "^5.1.0",
     "eslint-plugin-react-refresh": "^0.4.18",
     "globals": "^15.14.0",
-    "hardhat": "^2.22.18",
     "typescript": "^5.7.3",
     "typescript-eslint": "^8.22.0",
     "vite": "^6.0.11"

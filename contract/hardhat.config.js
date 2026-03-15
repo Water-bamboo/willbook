@@ -4,6 +4,12 @@ require("dotenv").config();
 const { RPC_URL, PRIVATE_KEY } = process.env;
 
 module.exports = {
+  paths: {
+    sources: "./contract",
+    tests: "./test",
+    cache: "./cache",
+    artifacts: "./artifacts"
+  },
   solidity: {
     version: "0.8.24",
     settings: {
